@@ -30,6 +30,9 @@
     <None Include="plugin.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Include="config.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <Target Name="CopyToPluginsFolder" AfterTargets="Build">
@@ -43,6 +46,7 @@
       <PluginSpecificFiles Include="$(OutputPath)SongRequestsPlugin.pdb" />
       <PluginSpecificFiles Include="$(OutputPath)SongRequestsPlugin.deps.json" />
       <PluginSpecificFiles Include="$(OutputPath)plugin.json" />
+      <PluginSpecificFiles Include="$(OutputPath)config.json" />
 
       <!-- Include plugin-specific dependencies (not shared with host) -->
       <PluginSpecificFiles Include="$(OutputPath)YoutubeExplode.dll" />

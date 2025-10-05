@@ -1,5 +1,6 @@
 ﻿Imports TwitchChatBot
 Imports System.IO
+Imports System.Text.Json
 
 ''' <summary>
 ''' Song Requests Plugin - Handles song requests from Spotify and YouTube
@@ -40,11 +41,13 @@ Public Class SongRequestsPlugin
             ' Create plugin data folder
             Dim pluginDataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PluginData", "SongRequests")
 
-            ' Initialize services
-            ' TODO: Get these from configuration file
-            Dim spotifyClientId = "ebb10f57a5e0406fbbb726c56f94c148"
-            Dim spotifyClientSecret = "262ce71a79394fe08376f33da90f2822"
+            ' Load configuration
+            Dim config = LoadConfig()
+            Dim spotifyClientId = config.RootElement.GetProperty("spotify").GetProperty("clientId").GetString()
+            Dim spotifyClientSecret = config.RootElement.GetProperty("spotify").GetProperty("clientSecret").GetString()
+            Dim webServerPort = config.RootElement.GetProperty("webServer").GetProperty("port").GetInt32()
 
+            ' Initialize services
             db = New DatabaseHelper(pluginDataFolder)
             spotify = New SpotifyService(spotifyClientId, spotifyClientSecret)
             youtube = New YouTubeService()
@@ -59,7 +62,7 @@ Public Class SongRequestsPlugin
             sdk.RegisterCommand("clearqueue", New ClearQueueCommand(queueManager))
 
             ' Start web server
-            webServer = New WebServer(queueManager, youtube, 5847)
+            webServer = New WebServer(queueManager, youtube, webServerPort)
             queueManager.SetWebServer(webServer)
             webServer.Start()
 
@@ -70,6 +73,20 @@ Public Class SongRequestsPlugin
             sdk.LogError(Name, $"Failed to initialize: {ex.Message}")
         End Try
     End Sub
+
+    ''' <summary>
+    ''' Load configuration from config.json file
+    ''' </summary>
+    Private Function LoadConfig() As JsonDocument
+        Dim configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json")
+
+        If Not File.Exists(configPath) Then
+            Throw New FileNotFoundException($"Configuration file not found: {configPath}")
+        End If
+
+        Dim jsonContent = File.ReadAllText(configPath)
+        Return JsonDocument.Parse(jsonContent)
+    End Function
 
     Public Sub Shutdown() Implements IBotPlugin.Shutdown
         sdk.LogInfo(Name, "SongRequests plugin shutting down...")
