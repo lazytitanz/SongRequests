@@ -78,7 +78,7 @@ Public Class SongRequestsPlugin
     ''' Load configuration from config.json file
     ''' </summary>
     Private Function LoadConfig() As JsonDocument
-        Dim configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json")
+        Dim configPath = Path.Combine(sdk.PluginFolder, "config.json")
 
         If Not File.Exists(configPath) Then
             Throw New FileNotFoundException($"Configuration file not found: {configPath}")
