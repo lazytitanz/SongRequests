@@ -298,6 +298,25 @@ Public Class DatabaseHelper
     End Sub
 
     ''' <summary>
+    ''' Remove a specific song from the queue by YouTube video ID
+    ''' </summary>
+    Public Sub RemoveSongByVideoId(videoId As String)
+        Using conn As New SQLiteConnection(_connectionString)
+            conn.Open()
+
+            Dim query As String = "DELETE FROM queue WHERE song_id IN (SELECT id FROM songs WHERE youtube_video_id = @videoId) AND status IN ('pending', 'playing')"
+
+            Using cmd As New SQLiteCommand(query, conn)
+                cmd.Parameters.AddWithValue("@videoId", videoId)
+                Dim rowsAffected = cmd.ExecuteNonQuery()
+                If rowsAffected > 0 Then
+                    Console.WriteLine($"[DatabaseHelper] Removed song with video ID: {videoId}")
+                End If
+            End Using
+        End Using
+    End Sub
+
+    ''' <summary>
     ''' Get total count of played songs
     ''' </summary>
     Public Function GetTotalPlayedCount() As Integer

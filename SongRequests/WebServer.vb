@@ -302,14 +302,25 @@ Public Class WebServer
                 Return Nothing
             End If
 
-            ' Download the file
+            ' Download the file to a temp location first
             Try
-                Dim success = Await _youtube.DownloadAudioAsync(videoId, cachedFilePath)
-                If success AndAlso File.Exists(cachedFilePath) Then
+                Dim tempFilePath = cachedFilePath & ".tmp"
+
+                ' Delete temp file if it exists from previous failed attempt
+                If File.Exists(tempFilePath) Then
+                    File.Delete(tempFilePath)
+                End If
+
+                Dim success = Await _youtube.DownloadAudioAsync(videoId, tempFilePath)
+                If success AndAlso File.Exists(tempFilePath) Then
+                    ' Atomically move temp file to final location
+                    File.Move(tempFilePath, cachedFilePath, overwrite:=True)
                     Console.WriteLine($"[WebServer] Audio ready: {videoId}")
                     Return $"http://localhost:{_port}/audio/{videoId}"
                 Else
-                    Console.WriteLine($"[WebServer] Failed to download audio for video: {videoId}")
+                    ' Download failed - remove song from queue
+                    Console.WriteLine($"[WebServer] Failed to download audio for video: {videoId} - removing from queue")
+                    _queueManager.RemoveSongByVideoId(videoId)
                     Return Nothing
                 End If
             Finally

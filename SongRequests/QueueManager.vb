@@ -175,6 +175,19 @@ Public Class QueueManager
     End Sub
 
     ''' <summary>
+    ''' Remove a song from the queue by video ID (used when download fails)
+    ''' </summary>
+    Public Sub RemoveSongByVideoId(videoId As String)
+        _db.RemoveSongByVideoId(videoId)
+
+        ' Clean up cached file if it exists
+        _webServer?.DeleteCachedFile(videoId)
+
+        ' Notify web clients
+        _webServer?.NotifyClients()
+    End Sub
+
+    ''' <summary>
     ''' Get the currently playing song
     ''' </summary>
     Public Function GetNowPlaying() As SongInfo
