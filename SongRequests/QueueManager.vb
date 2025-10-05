@@ -147,7 +147,15 @@ Public Class QueueManager
     ''' Skip the current song
     ''' </summary>
     Public Sub SkipCurrentSong()
+        ' Get current song before completing it
+        Dim currentSong = _db.GetCurrentSong()
+
         _db.CompleteCurrentSong()
+
+        ' Clean up cached audio file for the skipped song
+        If currentSong IsNot Nothing AndAlso Not String.IsNullOrEmpty(currentSong.YoutubeVideoId) Then
+            _webServer?.DeleteCachedFile(currentSong.YoutubeVideoId)
+        End If
 
         ' Notify web clients
         _webServer?.NotifyClients()
@@ -158,6 +166,9 @@ Public Class QueueManager
     ''' </summary>
     Public Sub ClearQueue()
         _db.ClearQueue()
+
+        ' Clean up all cached audio files
+        _webServer?.CleanupCache()
 
         ' Notify web clients
         _webServer?.NotifyClients()

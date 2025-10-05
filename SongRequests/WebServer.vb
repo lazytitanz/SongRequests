@@ -1,4 +1,5 @@
 Imports System
+Imports System.IO
 Imports System.Net
 Imports System.Text
 Imports System.Threading
@@ -12,13 +13,17 @@ Public Class WebServer
     Private ReadOnly _port As Integer
     Private ReadOnly _queueManager As QueueManager
     Private ReadOnly _youtube As YouTubeService
+    Private ReadOnly _cacheFolder As String
     Private _listenerThread As Thread
     Private _isRunning As Boolean
     Private ReadOnly _sseClients As New List(Of HttpListenerResponse)
+    Private ReadOnly _downloadLocks As New Dictionary(Of String, Object)
+    Private ReadOnly _downloadingVideos As New HashSet(Of String)
 
-    Public Sub New(queueManager As QueueManager, youtube As YouTubeService, Optional port As Integer = 5847)
+    Public Sub New(queueManager As QueueManager, youtube As YouTubeService, cacheFolder As String, Optional port As Integer = 5847)
         _queueManager = queueManager
         _youtube = youtube
+        _cacheFolder = cacheFolder
         _port = port
         _listener = New HttpListener()
         _listener.Prefixes.Add($"http://localhost:{_port}/")
@@ -124,9 +129,14 @@ Public Class WebServer
                         response.OutputStream.Write(errorBytes, 0, errorBytes.Length)
                     End If
                 Case Else
-                    response.StatusCode = 404
-                    Dim errorBytes = Encoding.UTF8.GetBytes("Not Found")
-                    response.OutputStream.Write(errorBytes, 0, errorBytes.Length)
+                    ' Handle audio file requests
+                    If path.StartsWith("/audio/") Then
+                        ServeAudioFile(response, path)
+                    Else
+                        response.StatusCode = 404
+                        Dim errorBytes = Encoding.UTF8.GetBytes("Not Found")
+                        response.OutputStream.Write(errorBytes, 0, errorBytes.Length)
+                    End If
             End Select
 
         Catch ex As Exception
@@ -175,19 +185,12 @@ Public Class WebServer
             .requestedAt = FormatTimeAgo(song.RequestedAt)
         }).ToList()
 
-        ' Get fresh audio URL for now playing song
+        ' Download and cache audio for now playing song
         Dim nowPlayingData As Object = Nothing
         If nowPlaying IsNot Nothing Then
             Dim audioUrl As String = Nothing
             If Not String.IsNullOrEmpty(nowPlaying.YoutubeVideoId) Then
-                Try
-                    audioUrl = Await _youtube.GetAudioStreamUrlAsync(nowPlaying.YoutubeVideoId)
-                    If audioUrl Is Nothing Then
-                        Console.WriteLine($"[WebServer] Audio URL is null for video: {nowPlaying.YoutubeVideoId}")
-                    End If
-                Catch ex As Exception
-                    Console.WriteLine($"[WebServer] Failed to get audio URL: {ex.Message}")
-                End Try
+                audioUrl = Await EnsureAudioDownloadedAsync(nowPlaying.YoutubeVideoId)
             End If
 
             nowPlayingData = New With {
@@ -253,6 +256,142 @@ Public Class WebServer
             Return _isRunning
         End Get
     End Property
+
+    ''' <summary>
+    ''' Ensure audio is downloaded for a video, handling concurrent requests
+    ''' </summary>
+    Private Async Function EnsureAudioDownloadedAsync(videoId As String) As Task(Of String)
+        Try
+            Dim cachedFilePath = Path.Combine(_cacheFolder, $"{videoId}.webm")
+
+            ' Get or create a lock object for this video
+            Dim lockObj As Object
+            SyncLock _downloadLocks
+                If Not _downloadLocks.ContainsKey(videoId) Then
+                    _downloadLocks(videoId) = New Object()
+                End If
+                lockObj = _downloadLocks(videoId)
+            End SyncLock
+
+            ' Use lock to prevent concurrent downloads of same video
+            Dim shouldDownload = False
+            SyncLock lockObj
+                If File.Exists(cachedFilePath) Then
+                    ' File already exists
+                    Return $"http://localhost:{_port}/audio/{videoId}"
+                ElseIf _downloadingVideos.Contains(videoId) Then
+                    ' Another thread is downloading, wait for it
+                    Console.WriteLine($"[WebServer] Waiting for ongoing download: {videoId}")
+                Else
+                    ' Mark as downloading and proceed
+                    _downloadingVideos.Add(videoId)
+                    shouldDownload = True
+                End If
+            End SyncLock
+
+            ' If another thread is downloading, wait and check
+            If Not shouldDownload Then
+                ' Wait up to 30 seconds for download to complete
+                For i As Integer = 0 To 60
+                    Await Task.Delay(500)
+                    If File.Exists(cachedFilePath) Then
+                        Return $"http://localhost:{_port}/audio/{videoId}"
+                    End If
+                Next
+                Console.WriteLine($"[WebServer] Timeout waiting for download: {videoId}")
+                Return Nothing
+            End If
+
+            ' Download the file
+            Try
+                Dim success = Await _youtube.DownloadAudioAsync(videoId, cachedFilePath)
+                If success AndAlso File.Exists(cachedFilePath) Then
+                    Console.WriteLine($"[WebServer] Audio ready: {videoId}")
+                    Return $"http://localhost:{_port}/audio/{videoId}"
+                Else
+                    Console.WriteLine($"[WebServer] Failed to download audio for video: {videoId}")
+                    Return Nothing
+                End If
+            Finally
+                ' Remove from downloading set
+                SyncLock lockObj
+                    _downloadingVideos.Remove(videoId)
+                End SyncLock
+            End Try
+
+        Catch ex As Exception
+            Console.WriteLine($"[WebServer] Failed to prepare audio: {ex.Message}")
+            Return Nothing
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Clean up cached audio files
+    ''' </summary>
+    Public Sub CleanupCache()
+        Try
+            If Not Directory.Exists(_cacheFolder) Then Return
+
+            Dim files = Directory.GetFiles(_cacheFolder, "*.webm")
+            For Each filePath In files
+                Try
+                    File.Delete(filePath)
+                    Console.WriteLine($"[WebServer] Deleted cached file: {Path.GetFileName(filePath)}")
+                Catch ex As Exception
+                    Console.WriteLine($"[WebServer] Could not delete {Path.GetFileName(filePath)}: {ex.Message}")
+                End Try
+            Next
+        Catch ex As Exception
+            Console.WriteLine($"[WebServer] Error cleaning cache: {ex.Message}")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Delete a specific cached audio file
+    ''' </summary>
+    Public Sub DeleteCachedFile(videoId As String)
+        Try
+            Dim filePath = Path.Combine(_cacheFolder, $"{videoId}.webm")
+            If File.Exists(filePath) Then
+                File.Delete(filePath)
+                Console.WriteLine($"[WebServer] Deleted cached file for video: {videoId}")
+            End If
+        Catch ex As Exception
+            Console.WriteLine($"[WebServer] Could not delete cached file for {videoId}: {ex.Message}")
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Serve cached audio file
+    ''' </summary>
+    Private Sub ServeAudioFile(response As HttpListenerResponse, urlPath As String)
+        Try
+            ' Extract video ID from path (/audio/VIDEO_ID)
+            Dim videoId = urlPath.Replace("/audio/", "")
+            Dim filePath = Path.Combine(_cacheFolder, $"{videoId}.webm")
+
+            If Not File.Exists(filePath) Then
+                response.StatusCode = 404
+                Dim errorBytes = Encoding.UTF8.GetBytes("Audio file not found")
+                response.OutputStream.Write(errorBytes, 0, errorBytes.Length)
+                Return
+            End If
+
+            ' Serve the audio file
+            response.ContentType = "audio/webm"
+            response.StatusCode = 200
+            response.Headers.Add("Access-Control-Allow-Origin", "*")
+
+            Using fileStream = New FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read)
+                fileStream.CopyTo(response.OutputStream)
+            End Using
+
+            Console.WriteLine($"[WebServer] Served audio file: {videoId}")
+        Catch ex As Exception
+            Console.WriteLine($"[WebServer] Error serving audio file: {ex.Message}")
+            response.StatusCode = 500
+        End Try
+    End Sub
 
     ''' <summary>
     ''' Serve Server-Sent Events stream

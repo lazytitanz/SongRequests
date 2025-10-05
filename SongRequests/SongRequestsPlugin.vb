@@ -33,6 +33,7 @@ Public Class SongRequestsPlugin
     Private youtube As YouTubeService
     Private queueManager As QueueManager
     Private webServer As WebServer
+    Private cacheFolder As String
 
     Public Sub Initialize(sdk As BotSDK) Implements IBotPlugin.Initialize
         Me.sdk = sdk
@@ -40,6 +41,12 @@ Public Class SongRequestsPlugin
         Try
             ' Create plugin data folder
             Dim pluginDataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PluginData", "SongRequests")
+
+            ' Create cache folder for temporary audio files
+            cacheFolder = Path.Combine(pluginDataFolder, "cache")
+            If Not Directory.Exists(cacheFolder) Then
+                Directory.CreateDirectory(cacheFolder)
+            End If
 
             ' Load configuration
             Dim config = LoadConfig()
@@ -62,7 +69,7 @@ Public Class SongRequestsPlugin
             sdk.RegisterCommand("clearqueue", New ClearQueueCommand(queueManager))
 
             ' Start web server
-            webServer = New WebServer(queueManager, youtube, webServerPort)
+            webServer = New WebServer(queueManager, youtube, cacheFolder, webServerPort)
             queueManager.SetWebServer(webServer)
             webServer.Start()
 

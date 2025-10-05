@@ -119,24 +119,34 @@ Public Class YouTubeService
     End Function
 
     ''' <summary>
-    ''' Get direct audio stream URL for a YouTube video
+    ''' Download audio from a YouTube video to a local file
     ''' </summary>
-    Public Async Function GetAudioStreamUrlAsync(videoId As String) As Task(Of String)
+    Public Async Function DownloadAudioAsync(videoId As String, outputPath As String) As Task(Of Boolean)
         Try
+            Console.WriteLine($"[YouTubeService] Downloading audio for video: {videoId}")
             Dim streamManifest = Await _youtube.Videos.Streams.GetManifestAsync(videoId)
 
             ' Get the best audio-only stream
             Dim audioStreams = streamManifest.GetAudioOnlyStreams()
             Dim audioStreamInfo = audioStreams.OrderByDescending(Function(s) s.Bitrate.BitsPerSecond).FirstOrDefault()
 
-            If audioStreamInfo IsNot Nothing Then
-                Return audioStreamInfo.Url
+            If audioStreamInfo Is Nothing Then
+                Console.WriteLine($"[YouTubeService] No audio stream available for video: {videoId}")
+                Return False
             End If
 
-            Return Nothing
+            ' Download the audio stream to file
+            Using stream = Await _youtube.Videos.Streams.GetAsync(audioStreamInfo)
+                Using fileStream = New IO.FileStream(outputPath, IO.FileMode.Create, IO.FileAccess.Write, IO.FileShare.None)
+                    Await stream.CopyToAsync(fileStream)
+                End Using
+            End Using
+
+            Console.WriteLine($"[YouTubeService] Successfully downloaded audio to: {outputPath}")
+            Return True
         Catch ex As Exception
-            Console.WriteLine($"[YouTubeService] Error getting audio URL: {ex.Message}")
-            Return Nothing
+            Console.WriteLine($"[YouTubeService] Error downloading audio: {ex.Message}")
+            Return False
         End Try
     End Function
 End Class
