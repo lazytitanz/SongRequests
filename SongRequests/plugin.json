@@ -1,0 +1,17 @@
+{
+  "name": "SongRequests",
+  "version": "1.0.0",
+  "sdk": "1.0",
+  "author": "SilentNades",
+  "publisher": "SilentNades",
+  "capabilities": {
+    "network": true,
+    "disk": true,
+    "process": false,
+    "apiHosting": true,
+    "reflectionEmit": false,
+    "dynamicLoading": false
+  },
+  "commands": ["!sr", "!queue", "!nowplaying", "!np", "!skip", "!clearqueue"],
+  "allowedApis": ["YoutubeExplode", "AngleSharp", "Newtonsoft"]
+}

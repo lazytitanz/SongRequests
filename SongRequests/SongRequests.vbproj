@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <RootNamespace>SongRequests</RootNamespace>
+    <AssemblyName>SongRequestsPlugin</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\TwitchChatBot\TwitchChatBot\TwitchChatBot.vbproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.9" />
+    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
+    <PackageReference Include="YoutubeExplode" Version="6.5.5" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="My Project\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="CopyToPluginsFolder" AfterTargets="Build">
+    <PropertyGroup>
+      <PluginDestination>..\..\TwitchChatBot\TwitchChatBot\bin\$(Configuration)\net8.0\Plugins\SongRequests</PluginDestination>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <!-- Include only plugin-specific files -->
+      <PluginSpecificFiles Include="$(OutputPath)SongRequestsPlugin.dll" />
+      <PluginSpecificFiles Include="$(OutputPath)SongRequestsPlugin.pdb" />
+      <PluginSpecificFiles Include="$(OutputPath)SongRequestsPlugin.deps.json" />
+      <PluginSpecificFiles Include="$(OutputPath)plugin.json" />
+
+      <!-- Include plugin-specific dependencies (not shared with host) -->
+      <PluginSpecificFiles Include="$(OutputPath)YoutubeExplode.dll" />
+      <PluginSpecificFiles Include="$(OutputPath)AngleSharp.dll" />
+      <PluginSpecificFiles Include="$(OutputPath)System.Data.SQLite.dll" />
+      <PluginSpecificFiles Include="$(OutputPath)System.Configuration.ConfigurationManager.dll" />
+      <PluginSpecificFiles Include="$(OutputPath)System.Diagnostics.EventLog.dll" />
+      <PluginSpecificFiles Include="$(OutputPath)System.Security.Cryptography.ProtectedData.dll" />
+
+      <!-- Include runtimes folder for native dependencies -->
+      <PluginRuntimeFiles Include="$(OutputPath)runtimes\**\*.*" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(PluginDestination)" />
+    <Copy SourceFiles="@(PluginSpecificFiles)" DestinationFolder="$(PluginDestination)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(PluginRuntimeFiles)" DestinationFolder="$(PluginDestination)\runtimes\%(RecursiveDir)" SkipUnchangedFiles="true" />
+
+    <Message Text="Copied plugin to: $(PluginDestination)" Importance="high" />
+  </Target>
+
+</Project>
