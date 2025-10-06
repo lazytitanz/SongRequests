@@ -54,6 +54,13 @@ Public Class SongRequestsPlugin
             Dim spotifyClientSecret = config.RootElement.GetProperty("spotify").GetProperty("clientSecret").GetString()
             Dim webServerPort = config.RootElement.GetProperty("webServer").GetProperty("port").GetInt32()
 
+            ' Validate Spotify credentials
+            If String.IsNullOrWhiteSpace(spotifyClientId) OrElse String.IsNullOrWhiteSpace(spotifyClientSecret) Then
+                sdk.LogError(Name, "Spotify API credentials are not configured in config.json")
+                sdk.LogError(Name, "Plugin initialization halted. Please set spotify.clientId and spotify.clientSecret in config.json")
+                Throw New InvalidOperationException("Spotify API credentials are required but not configured")
+            End If
+
             ' Initialize services
             db = New DatabaseHelper(pluginDataFolder, sdk)
             spotify = New SpotifyService(spotifyClientId, spotifyClientSecret)

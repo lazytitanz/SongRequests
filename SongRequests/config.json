@@ -1,7 +1,7 @@
 {
   "spotify": {
-    "clientId": "your_spotify_client_id_here",
-    "clientSecret": "your_spotify_client_secret_here"
+    "clientId": "",
+    "clientSecret": ""
   },
   "webServer": {
     "port": 5847
