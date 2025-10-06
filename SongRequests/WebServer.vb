@@ -81,17 +81,25 @@ Public Class WebServer
     ''' Main listener loop
     ''' </summary>
     Private Sub ListenLoop()
-        While _isRunning
-            Try
-                Dim context = _listener.GetContext()
-                ThreadPool.QueueUserWorkItem(AddressOf HandleRequest, context)
-            Catch ex As HttpListenerException
-                ' Listener was stopped
-                If Not _isRunning Then Exit While
-            Catch ex As Exception
-                _sdk.LogError("WebServer", $"Error: {ex.Message}")
-            End Try
-        End While
+        Try
+            While _isRunning
+                Try
+                    Dim context = _listener.GetContext()
+                    ThreadPool.QueueUserWorkItem(AddressOf HandleRequest, context)
+                Catch ex As HttpListenerException
+                    ' Listener was stopped
+                    If Not _isRunning Then Exit While
+                    _sdk.LogError("WebServer", $"HttpListener error: {ex.Message}")
+                Catch ex As Exception
+                    _sdk.LogError("WebServer", $"Error in listener loop: {ex.Message}")
+                    _sdk.LogError("WebServer", $"Stack trace: {ex.StackTrace}")
+                End Try
+            End While
+        Catch ex As Exception
+            _sdk.LogError("WebServer", $"FATAL: ListenLoop crashed: {ex.Message}")
+            _sdk.LogError("WebServer", $"Stack trace: {ex.StackTrace}")
+            _isRunning = False
+        End Try
     End Sub
 
     ''' <summary>
