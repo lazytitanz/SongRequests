@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/evanl/source/repos/OllamaPlugin/OllamaPlugin/**)",
+      "Bash(dir:*)",
+      "Read(//c/Users/evanl/source/repos/OllamaPlugin/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

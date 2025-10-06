@@ -1,5 +1,6 @@
 Imports System.Data.SQLite
 Imports System.IO
+Imports TwitchChatBot
 
 ''' <summary>
 ''' Manages SQLite database operations for song requests
@@ -7,8 +8,11 @@ Imports System.IO
 Public Class DatabaseHelper
     Private ReadOnly _connectionString As String
     Private ReadOnly _dbPath As String
+    Private ReadOnly _sdk As BotSDK
 
-    Public Sub New(pluginDataFolder As String)
+    Public Sub New(pluginDataFolder As String, sdk As BotSDK)
+        _sdk = sdk
+
         ' Create SongRequests folder if it doesn't exist
         If Not Directory.Exists(pluginDataFolder) Then
             Directory.CreateDirectory(pluginDataFolder)
@@ -86,12 +90,12 @@ Public Class DatabaseHelper
 
         ' Add youtube_video_id column if it doesn't exist
         If Not hasVideoIdColumn Then
-            Console.WriteLine("[DatabaseHelper] Migrating database: Adding youtube_video_id column...")
+            _sdk.LogInfo("DatabaseHelper", "Migrating database: Adding youtube_video_id column...")
             Dim addColumn As String = "ALTER TABLE songs ADD COLUMN youtube_video_id TEXT"
             Using cmd As New SQLiteCommand(addColumn, conn)
                 cmd.ExecuteNonQuery()
             End Using
-            Console.WriteLine("[DatabaseHelper] Migration complete")
+            _sdk.LogInfo("DatabaseHelper", "Migration complete")
         End If
 
         ' Remove audio_url column if it exists (SQLite doesn't support DROP COLUMN easily, so we'll ignore it)
@@ -310,7 +314,7 @@ Public Class DatabaseHelper
                 cmd.Parameters.AddWithValue("@videoId", videoId)
                 Dim rowsAffected = cmd.ExecuteNonQuery()
                 If rowsAffected > 0 Then
-                    Console.WriteLine($"[DatabaseHelper] Removed song with video ID: {videoId}")
+                    _sdk.LogInfo("DatabaseHelper", $"Removed song with video ID: {videoId}")
                 End If
             End Using
         End Using

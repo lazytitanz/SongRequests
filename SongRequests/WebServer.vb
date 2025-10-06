@@ -4,6 +4,7 @@ Imports System.Net
 Imports System.Text
 Imports System.Threading
 Imports Newtonsoft.Json
+Imports TwitchChatBot
 
 ''' <summary>
 ''' HTTP server for hosting the Song Requests web UI
@@ -14,16 +15,18 @@ Public Class WebServer
     Private ReadOnly _queueManager As QueueManager
     Private ReadOnly _youtube As YouTubeService
     Private ReadOnly _cacheFolder As String
+    Private ReadOnly _sdk As BotSDK
     Private _listenerThread As Thread
     Private _isRunning As Boolean
     Private ReadOnly _sseClients As New List(Of HttpListenerResponse)
     Private ReadOnly _downloadLocks As New Dictionary(Of String, Object)
     Private ReadOnly _downloadingVideos As New HashSet(Of String)
 
-    Public Sub New(queueManager As QueueManager, youtube As YouTubeService, cacheFolder As String, Optional port As Integer = 5847)
+    Public Sub New(queueManager As QueueManager, youtube As YouTubeService, cacheFolder As String, sdk As BotSDK, Optional port As Integer = 5847)
         _queueManager = queueManager
         _youtube = youtube
         _cacheFolder = cacheFolder
+        _sdk = sdk
         _port = port
         _listener = New HttpListener()
         _listener.Prefixes.Add($"http://localhost:{_port}/")
@@ -43,19 +46,19 @@ Public Class WebServer
             _listenerThread.IsBackground = True
             _listenerThread.Start()
 
-            Console.WriteLine($"[WebServer] Started successfully on http://localhost:{_port}")
-            Console.WriteLine($"[WebServer] Open this URL in your browser: http://localhost:{_port}")
+            _sdk.LogInfo("WebServer", $"Started successfully on http://localhost:{_port}")
+            _sdk.LogInfo("WebServer", $"Open this URL in your browser: http://localhost:{_port}")
         Catch ex As HttpListenerException When ex.ErrorCode = 5
-            Console.WriteLine($"[WebServer] ERROR: Access Denied (Error {ex.ErrorCode})")
-            Console.WriteLine("[WebServer] HttpListener requires administrator privileges on Windows.")
-            Console.WriteLine("[WebServer] Please run the bot as administrator OR run this command in an admin PowerShell:")
-            Console.WriteLine($"[WebServer] netsh http add urlacl url=http://localhost:{_port}/ user=Everyone")
+            _sdk.LogError("WebServer", $"ERROR: Access Denied (Error {ex.ErrorCode})")
+            _sdk.LogError("WebServer", "HttpListener requires administrator privileges on Windows.")
+            _sdk.LogError("WebServer", "Please run the bot as administrator OR run this command in an admin PowerShell:")
+            _sdk.LogError("WebServer", $"netsh http add urlacl url=http://localhost:{_port}/ user=Everyone")
             Throw
         Catch ex As Exception
-            Console.WriteLine($"[WebServer] Failed to start: {ex.Message}")
-            Console.WriteLine($"[WebServer] Exception Type: {ex.GetType().Name}")
+            _sdk.LogError("WebServer", $"Failed to start: {ex.Message}")
+            _sdk.LogError("WebServer", $"Exception Type: {ex.GetType().Name}")
             If TypeOf ex Is HttpListenerException Then
-                Console.WriteLine($"[WebServer] Error Code: {CType(ex, HttpListenerException).ErrorCode}")
+                _sdk.LogError("WebServer", $"Error Code: {CType(ex, HttpListenerException).ErrorCode}")
             End If
             Throw
         End Try
@@ -71,7 +74,7 @@ Public Class WebServer
         _listener.Stop()
         _listener.Close()
 
-        Console.WriteLine("[WebServer] Stopped")
+        _sdk.LogInfo("WebServer", "Stopped")
     End Sub
 
     ''' <summary>
@@ -86,7 +89,7 @@ Public Class WebServer
                 ' Listener was stopped
                 If Not _isRunning Then Exit While
             Catch ex As Exception
-                Console.WriteLine($"[WebServer] Error: {ex.Message}")
+                _sdk.LogError("WebServer", $"Error: {ex.Message}")
             End Try
         End While
     End Sub
@@ -140,7 +143,7 @@ Public Class WebServer
             End Select
 
         Catch ex As Exception
-            Console.WriteLine($"[WebServer] Request error: {ex.Message}")
+            _sdk.LogError("WebServer", $"Request error: {ex.Message}")
             response.StatusCode = 500
         Finally
             If closeResponse Then
@@ -281,7 +284,7 @@ Public Class WebServer
                     Return $"http://localhost:{_port}/audio/{videoId}"
                 ElseIf _downloadingVideos.Contains(videoId) Then
                     ' Another thread is downloading, wait for it
-                    Console.WriteLine($"[WebServer] Waiting for ongoing download: {videoId}")
+                    _sdk.LogInfo("WebServer", $"Waiting for ongoing download: {videoId}")
                 Else
                     ' Mark as downloading and proceed
                     _downloadingVideos.Add(videoId)
@@ -298,7 +301,7 @@ Public Class WebServer
                         Return $"http://localhost:{_port}/audio/{videoId}"
                     End If
                 Next
-                Console.WriteLine($"[WebServer] Timeout waiting for download: {videoId}")
+                _sdk.LogError("WebServer", $"Timeout waiting for download: {videoId}")
                 Return Nothing
             End If
 
@@ -315,11 +318,11 @@ Public Class WebServer
                 If success AndAlso File.Exists(tempFilePath) Then
                     ' Atomically move temp file to final location
                     File.Move(tempFilePath, cachedFilePath, overwrite:=True)
-                    Console.WriteLine($"[WebServer] Audio ready: {videoId}")
+                    _sdk.LogInfo("WebServer", $"Audio ready: {videoId}")
                     Return $"http://localhost:{_port}/audio/{videoId}"
                 Else
                     ' Download failed - remove song from queue
-                    Console.WriteLine($"[WebServer] Failed to download audio for video: {videoId} - removing from queue")
+                    _sdk.LogError("WebServer", $"Failed to download audio for video: {videoId} - removing from queue")
                     _queueManager.RemoveSongByVideoId(videoId)
                     Return Nothing
                 End If
@@ -331,7 +334,7 @@ Public Class WebServer
             End Try
 
         Catch ex As Exception
-            Console.WriteLine($"[WebServer] Failed to prepare audio: {ex.Message}")
+            _sdk.LogError("WebServer", $"Failed to prepare audio: {ex.Message}")
             Return Nothing
         End Try
     End Function
@@ -347,13 +350,13 @@ Public Class WebServer
             For Each filePath In files
                 Try
                     File.Delete(filePath)
-                    Console.WriteLine($"[WebServer] Deleted cached file: {Path.GetFileName(filePath)}")
+                    _sdk.LogInfo("WebServer", $"Deleted cached file: {Path.GetFileName(filePath)}")
                 Catch ex As Exception
-                    Console.WriteLine($"[WebServer] Could not delete {Path.GetFileName(filePath)}: {ex.Message}")
+                    _sdk.LogError("WebServer", $"Could not delete {Path.GetFileName(filePath)}: {ex.Message}")
                 End Try
             Next
         Catch ex As Exception
-            Console.WriteLine($"[WebServer] Error cleaning cache: {ex.Message}")
+            _sdk.LogError("WebServer", $"Error cleaning cache: {ex.Message}")
         End Try
     End Sub
 
@@ -365,10 +368,10 @@ Public Class WebServer
             Dim filePath = Path.Combine(_cacheFolder, $"{videoId}.webm")
             If File.Exists(filePath) Then
                 File.Delete(filePath)
-                Console.WriteLine($"[WebServer] Deleted cached file for video: {videoId}")
+                _sdk.LogInfo("WebServer", $"Deleted cached file for video: {videoId}")
             End If
         Catch ex As Exception
-            Console.WriteLine($"[WebServer] Could not delete cached file for {videoId}: {ex.Message}")
+            _sdk.LogError("WebServer", $"Could not delete cached file for {videoId}: {ex.Message}")
         End Try
     End Sub
 
@@ -397,9 +400,9 @@ Public Class WebServer
                 fileStream.CopyTo(response.OutputStream)
             End Using
 
-            Console.WriteLine($"[WebServer] Served audio file: {videoId}")
+            _sdk.LogInfo("WebServer", $"Served audio file: {videoId}")
         Catch ex As Exception
-            Console.WriteLine($"[WebServer] Error serving audio file: {ex.Message}")
+            _sdk.LogError("WebServer", $"Error serving audio file: {ex.Message}")
             response.StatusCode = 500
         End Try
     End Sub

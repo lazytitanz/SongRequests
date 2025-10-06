@@ -3,19 +3,23 @@ Imports System.Net.Http
 Imports System.Text.RegularExpressions
 Imports YoutubeExplode
 Imports YoutubeExplode.Search
+Imports TwitchChatBot
 
 ''' <summary>
 ''' Handles YouTube video search and URL validation using YouTubeExplode
 ''' </summary>
 Public Class YouTubeService
     Private ReadOnly _youtube As YoutubeClient
+    Private ReadOnly _sdk As BotSDK
 
     ' Regex to match YouTube URLs
     Private Shared ReadOnly YouTubeRegex As New Regex(
         "^https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})",
         RegexOptions.Compiled Or RegexOptions.IgnoreCase)
 
-    Public Sub New()
+    Public Sub New(sdk As BotSDK)
+        _sdk = sdk
+
         ' Create HttpClient with Firefox on Windows 11 user agent
         Dim httpClient As New HttpClient()
         httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0")
@@ -48,7 +52,7 @@ Public Class YouTubeService
         Try
             Dim videoId = ExtractVideoId(url)
             If String.IsNullOrEmpty(videoId) Then
-                Console.WriteLine("[YouTubeService] Invalid YouTube URL - could not extract video ID")
+                _sdk.LogInfo("YouTubeService", "Invalid YouTube URL - could not extract video ID")
                 Return Nothing
             End If
 
@@ -68,7 +72,7 @@ Public Class YouTubeService
                 .Url = $"https://www.youtube.com/watch?v={videoId}"
             }
         Catch ex As Exception
-            Console.WriteLine($"[YouTubeService] Error getting video info for URL '{url}': {ex.Message}")
+            _sdk.LogError("YouTubeService", $"Error getting video info for URL '{url}': {ex.Message}")
             Return Nothing
         End Try
     End Function
@@ -78,7 +82,7 @@ Public Class YouTubeService
     ''' </summary>
     Public Async Function SearchVideoAsync(query As String) As Task(Of YouTubeVideoInfo)
         Try
-            Console.WriteLine($"[YouTubeService] Searching YouTube for: '{query}'")
+            _sdk.LogInfo("YouTubeService", $"Searching YouTube for: '{query}'")
             Dim searchResults = _youtube.Search.GetVideosAsync(query)
 
             ' Get first result
@@ -100,19 +104,19 @@ Public Class YouTubeService
                     .Url = $"https://www.youtube.com/watch?v={video.Id.Value}"
                 }
 
-                Console.WriteLine($"[YouTubeService] Found: {result.Author} - {result.Title}")
+                _sdk.LogInfo("YouTubeService", $"Found: {result.Author} - {result.Title}")
                 Await enumerator.DisposeAsync()
                 Return result
             End If
 
             Await enumerator.DisposeAsync()
-            Console.WriteLine($"[YouTubeService] No search results found for: '{query}'")
+            _sdk.LogInfo("YouTubeService", $"No search results found for: '{query}'")
             Return Nothing
         Catch ex As Exception
-            Console.WriteLine($"[YouTubeService] Error searching YouTube for '{query}': {ex.Message}")
-            Console.WriteLine($"[YouTubeService] Exception type: {ex.GetType().Name}")
+            _sdk.LogError("YouTubeService", $"Error searching YouTube for '{query}': {ex.Message}")
+            _sdk.LogError("YouTubeService", $"Exception type: {ex.GetType().Name}")
             If ex.InnerException IsNot Nothing Then
-                Console.WriteLine($"[YouTubeService] Inner exception: {ex.InnerException.Message}")
+                _sdk.LogError("YouTubeService", $"Inner exception: {ex.InnerException.Message}")
             End If
             Return Nothing
         End Try
@@ -123,7 +127,7 @@ Public Class YouTubeService
     ''' </summary>
     Public Async Function DownloadAudioAsync(videoId As String, outputPath As String) As Task(Of Boolean)
         Try
-            Console.WriteLine($"[YouTubeService] Downloading audio for video: {videoId}")
+            _sdk.LogInfo("YouTubeService", $"Downloading audio for video: {videoId}")
             Dim streamManifest = Await _youtube.Videos.Streams.GetManifestAsync(videoId)
 
             ' Get the best audio-only stream
@@ -131,7 +135,7 @@ Public Class YouTubeService
             Dim audioStreamInfo = audioStreams.OrderByDescending(Function(s) s.Bitrate.BitsPerSecond).FirstOrDefault()
 
             If audioStreamInfo Is Nothing Then
-                Console.WriteLine($"[YouTubeService] No audio stream available for video: {videoId}")
+                _sdk.LogError("YouTubeService", $"No audio stream available for video: {videoId}")
                 Return False
             End If
 
@@ -142,10 +146,10 @@ Public Class YouTubeService
                 End Using
             End Using
 
-            Console.WriteLine($"[YouTubeService] Successfully downloaded audio to: {outputPath}")
+            _sdk.LogInfo("YouTubeService", $"Successfully downloaded audio to: {outputPath}")
             Return True
         Catch ex As Exception
-            Console.WriteLine($"[YouTubeService] Error downloading audio: {ex.Message}")
+            _sdk.LogError("YouTubeService", $"Error downloading audio: {ex.Message}")
             Return False
         End Try
     End Function

@@ -55,9 +55,9 @@ Public Class SongRequestsPlugin
             Dim webServerPort = config.RootElement.GetProperty("webServer").GetProperty("port").GetInt32()
 
             ' Initialize services
-            db = New DatabaseHelper(pluginDataFolder)
+            db = New DatabaseHelper(pluginDataFolder, sdk)
             spotify = New SpotifyService(spotifyClientId, spotifyClientSecret)
-            youtube = New YouTubeService()
+            youtube = New YouTubeService(sdk)
             queueManager = New QueueManager(db, spotify, youtube)
 
             ' Register commands
@@ -69,7 +69,7 @@ Public Class SongRequestsPlugin
             sdk.RegisterCommand("clearqueue", New ClearQueueCommand(queueManager))
 
             ' Start web server
-            webServer = New WebServer(queueManager, youtube, cacheFolder, webServerPort)
+            webServer = New WebServer(queueManager, youtube, cacheFolder, sdk, webServerPort)
             queueManager.SetWebServer(webServer)
             webServer.Start()
 
